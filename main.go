@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -45,7 +46,7 @@ func ParseConfig(filename string) (ConfigJson, error) {
 }
 
 func RetrieveAccessToken(code string, config ConfigJson) (AccessTokenResponse, error) {
-	/// request access token
+	// request access token
 	reqForm := url.Values{
 		"client_id":     {config.ClientId},
 		"client_secret": {config.ClientSecret},
@@ -66,7 +67,7 @@ func RetrieveAccessToken(code string, config ConfigJson) (AccessTokenResponse, e
 		return AccessTokenResponse{}, err
 	}
 
-	/// parse response json into struct
+	// parse response json into struct
 	var parsedResponse AccessTokenResponse
 	err = json.Unmarshal(body, &parsedResponse)
 
@@ -97,25 +98,24 @@ func RootHandler(w http.ResponseWriter, r *http.Request, config ConfigJson) {
 	code := r.URL.Query().Get("code")
 
 	if len(code) == 0 {
-		html := `
-		<html>
-		<head>
-		<title>Home page</title>
-		</head>
-		<body>
-		Home page!
-		Log in with <a href="/instagram_authorize">Instagram</a>
-		</body>
-		</html>
-		`
-		w.Write([]byte(html))
+		t, _ := template.ParseFiles("templates/login.html")
+		t.Execute(w, nil)
 	} else {
 		parsedResponse, err := RetrieveAccessToken(code, config)
 		if err != nil {
 			fmt.Println(err.Error())
 			return
 		}
-		fmt.Println("Access Token:", parsedResponse.AccessToken)
+		// create template
+		page := struct {
+			Name string
+		}{
+			parsedResponse.User.FullName,
+		}
+
+		t, _ := template.ParseFiles("templates/index.html")
+
+		t.Execute(w, page)
 	}
 }
 
