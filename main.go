@@ -11,6 +11,11 @@ import (
 
 const PORT = "8080"
 
+const (
+	AUTH_COOKIE_NAME     = "access_token_cookie"
+	USERNAME_COOKIE_NAME = "username_cookie"
+)
+
 type ConfigJson struct {
 	ClientId     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
@@ -96,16 +101,31 @@ func main() {
 
 func RootHandler(w http.ResponseWriter, r *http.Request, config ConfigJson) {
 	code := r.URL.Query().Get("code")
+	cookie, cookie_err := r.Cookie(AUTH_COOKIE_NAME)
+	_ = cookie
 
-	if len(code) == 0 {
+	if len(code) == 0 && cookie_err != nil { // if auth code sent
 		t, _ := template.ParseFiles("templates/login.html")
 		t.Execute(w, nil)
-	} else {
+	} else if cookie_err != nil { // if cookie not set yet
 		parsedResponse, err := RetrieveAccessToken(code, config)
 		if err != nil {
 			fmt.Println(err.Error())
 			return
 		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:   AUTH_COOKIE_NAME,
+			Value:  parsedResponse.AccessToken,
+			MaxAge: 0,
+		})
+
+		http.SetCookie(w, &http.Cookie{
+			Name:   USERNAME_COOKIE_NAME,
+			Value:  parsedResponse.User.FullName,
+			MaxAge: 0,
+		})
+
 		// create template
 		page := struct {
 			Name string
@@ -114,7 +134,23 @@ func RootHandler(w http.ResponseWriter, r *http.Request, config ConfigJson) {
 		}
 
 		t, _ := template.ParseFiles("templates/index.html")
+		t.Execute(w, page)
+	} else { // if authentication token already set in cookie
+		username_cookie, err := r.Cookie(USERNAME_COOKIE_NAME)
 
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+
+		// create template
+		page := struct {
+			Name string
+		}{
+			username_cookie.Value,
+		}
+
+		t, _ := template.ParseFiles("templates/index.html")
 		t.Execute(w, page)
 	}
 }
