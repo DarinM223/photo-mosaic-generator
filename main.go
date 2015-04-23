@@ -21,6 +21,7 @@ type ConfigJson struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+/// Access token response structs
 type AccessTokenResponse struct {
 	AccessToken string          `json:"access_token"`
 	User        AccessTokenUser `json:"user"`
@@ -31,6 +32,28 @@ type AccessTokenUser struct {
 	Username       string `json:"username"`
 	FullName       string `json:"full_name"`
 	ProfilePicture string `json:"profile_picture"`
+}
+
+/// Tag search response structs
+type TagSearchResponse struct {
+	Data []TagImage `json:"data"`
+}
+
+type TagImage struct {
+	Type   string        `json:"type"`
+	Images TagImageTypes `json:"images"`
+}
+
+type TagImageTypes struct {
+	LowRes      TagImageProperties `json:"low_resolution"`
+	Thumbnail   TagImageProperties `json:"thumbnail"`
+	StandardRes TagImageProperties `json:"standard_resolution"`
+}
+
+type TagImageProperties struct {
+	Url    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
 }
 
 func ParseConfig(filename string) (ConfigJson, error) {
@@ -83,6 +106,30 @@ func RetrieveAccessToken(code string, config ConfigJson) (AccessTokenResponse, e
 	return parsedResponse, nil
 }
 
+func RetrieveImageData(tag string, access_token string) (TagSearchResponse, error) {
+	resp, err := http.Get("https://api.instagram.com/v1/tags/" + url.QueryEscape(tag) +
+		"/media/recent?access_token=" + url.QueryEscape(access_token))
+
+	if err != nil {
+		return TagSearchResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return TagSearchResponse{}, err
+	}
+
+	var tagSearchResponse TagSearchResponse
+	err = json.Unmarshal(body, &tagSearchResponse)
+
+	if err != nil {
+		return TagSearchResponse{}, err
+	}
+
+	return tagSearchResponse, nil
+}
+
 func main() {
 	config, _ := ParseConfig("./config.json")
 
@@ -91,6 +138,9 @@ func main() {
 	})
 	http.HandleFunc("/instagram_authorize", func(w http.ResponseWriter, r *http.Request) {
 		InstagramLoginRedirect(w, r, config)
+	})
+	http.HandleFunc("/instagram_search", func(w http.ResponseWriter, r *http.Request) {
+		InstagramSearch(w, r, config)
 	})
 
 	fmt.Println("Listening on port", PORT)
@@ -125,6 +175,8 @@ func RootHandler(w http.ResponseWriter, r *http.Request, config ConfigJson) {
 			Value:  parsedResponse.User.FullName,
 			MaxAge: 0,
 		})
+
+		fmt.Println(parsedResponse.AccessToken)
 
 		// create template
 		page := struct {
@@ -164,4 +216,21 @@ func InstagramLoginRedirect(w http.ResponseWriter, r *http.Request, config Confi
 		"https://api.instagram.com/oauth/authorize/?client_id="+config.ClientId+"&redirect_uri="+
 			redirectUri+"&response_type="+responseType,
 		301)
+}
+
+func InstagramSearch(w http.ResponseWriter, r *http.Request, config ConfigJson) {
+	tag_query := r.URL.Query().Get("query")
+	auth_cookie, err := r.Cookie(AUTH_COOKIE_NAME)
+	if err != nil {
+		http.Error(w, "You have to be authorized to access this page", http.StatusUnauthorized)
+		return
+	}
+	access_token := auth_cookie.Value
+
+	tagSearchResponse, err := RetrieveImageData(tag_query, access_token)
+	_ = tagSearchResponse
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
