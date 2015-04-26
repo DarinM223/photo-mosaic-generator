@@ -16,12 +16,11 @@ func RetrieveImages(tagSearchResponse TagSearchResponse, c chan<- *image.Image) 
 			} else {
 				img, _, err := image.Decode(resp.Body)
 				if err != nil {
-					c <- &img
-				} else {
 					c <- nil
+				} else {
+					c <- &img
 				}
 			}
-
 		}
 	}()
 }
