@@ -1,28 +1,27 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	_ "image/gif"
+	_ "image/jpeg"
 	"net/http"
+	"time"
 )
 
-func RetrieveImages(tagSearchResponse TagSearchResponse, c chan interface{}) {
+func RetrieveImages(tagSearchResponse TagSearchResponse, c chan image.Image) {
+	client := http.Client{
+		Timeout: 500,
+	}
 	for _, value := range tagSearchResponse.Data {
-		go func() {
-			resp, err := http.Get(value.Images.Thumbnail.Url)
-			defer resp.Body.Close()
-			if err != nil {
-				c <- err
-				return
-			}
+		resp, _ := client.Get(value.Images.Thumbnail.Url)
+		defer resp.Body.Close()
 
-			img, _, err := image.Decode(resp.Body)
-			if err != nil {
-				c <- err
-			} else {
-				c <- img
-			}
-		}()
+		img, _, err := image.Decode(resp.Body)
+		if err == nil {
+			c <- img
+		}
 	}
 }
 
@@ -58,31 +57,35 @@ func CalculateAverageColor(img image.Image, ret chan colorChanType) {
 }
 
 /// receive images as they are sent and calculate average color for each image
-func ProcessImages(imagesLength int, imageChan chan interface{}, ret chan map[color.Color]image.Image) {
+func ProcessImages(imagesLength int, imageChan chan image.Image, ret chan map[color.Color]image.Image) {
 	index := 0
 	imageMap := make(map[color.Color]image.Image)
-	colorChan := make(chan colorChanType)
+	averageColorChan := make(chan colorChanType)
+	timeout := make(chan bool)
+
+	// timeout after a second
+	go func() {
+		time.Sleep(1 * time.Second)
+		timeout <- true
+	}()
 
 	for {
 		select {
 		case img := <-imageChan: // finished receiving a new image
-			switch img.(type) {
-			case image.Image:
-				go CalculateAverageColor(img.(image.Image), colorChan) // calculate the average color
-			case error:
-				// do nothing
-				break
-			}
-			index++
-			break
-		case color := <-colorChan: // finished computing an average color
-			if imageMap[color.Color] != nil {
+			go CalculateAverageColor(img.(image.Image), averageColorChan)
+		case color := <-averageColorChan: // finished computing an average color
+			if imageMap[color.Color] == nil {
 				imageMap[color.Color] = color.Image // add the new image color pairing
 			}
+			index++
 			if index >= imagesLength {
 				ret <- imageMap
+				return
 			}
-			break
+		case <-timeout:
+			fmt.Println("Image processing timed out!")
+			ret <- imageMap
+			return
 		}
 	}
 }
