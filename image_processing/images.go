@@ -1,4 +1,4 @@
-package main
+package image_processing
 
 import (
 	"fmt"
@@ -10,49 +10,18 @@ import (
 	"time"
 )
 
-func RetrieveImages(tagSearchResponse TagSearchResponse, c chan image.Image) {
+func RetrieveImages(imageUrls []string, c chan image.Image) {
 	client := http.Client{
 		Timeout: 500,
 	}
-	for _, value := range tagSearchResponse.Data {
-		resp, _ := client.Get(value.Images.Thumbnail.Url)
+	for _, value := range imageUrls {
+		resp, _ := client.Get(value)
 		defer resp.Body.Close()
 
 		img, _, err := image.Decode(resp.Body)
 		if err == nil {
 			c <- img
 		}
-	}
-}
-
-type colorChanType struct {
-	Color color.Color
-	Image image.Image
-}
-
-func CalculateAverageColor(img image.Image, ret chan colorChanType) {
-	r_count, b_count, g_count := uint32(0), uint32(0), uint32(0)
-	total_count := uint32(0)
-
-	for y := 0; y < img.Bounds().Dy(); y++ {
-		for x := 0; x < img.Bounds().Dx(); x++ {
-			r, b, g, _ := img.At(x, y).RGBA()
-
-			r_count += r
-			b_count += b
-			g_count += g
-			total_count++
-		}
-	}
-
-	ret <- colorChanType{
-		color.RGBA{
-			uint8(r_count / total_count),
-			uint8(b_count / total_count),
-			uint8(g_count / total_count),
-			1,
-		},
-		img,
 	}
 }
 
