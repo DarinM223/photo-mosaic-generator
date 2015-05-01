@@ -114,3 +114,35 @@ func CalculateAverageColorRegions(img image.Image, region image.Rectangle, ret c
 	}
 	ret <- averageColorMap
 }
+
+func CreateMosaic(srcImg image.Image, region image.Rectangle,
+	avgColorMap map[image.Point]color.Color, imgMap map[color.Color]image.Image, ret chan image.Image) {
+
+	mosaic := image.NewRGBA(srcImg.Bounds())
+	bestImageMap := make(map[image.Point]image.Image)
+
+	// for each region calculate best image for each
+	// for every pixel
+	for r, avgColor := range avgColorMap {
+		bestImageMap[r] = imgMap[FindClosestColor(avgColor, imgMap)]
+	}
+
+	for y := 0; y < mosaic.Bounds().Dy(); y++ {
+		for x := 0; x < mosaic.Bounds().Dx(); x++ {
+			// calculate the region
+			currRegionX := int(float64(x) / float64(region.Dx()))
+			currRegionY := int(float64(y) / float64(region.Dy()))
+
+			currRegion := image.Point{
+				currRegionX,
+				currRegionY,
+			}
+			bestImage := bestImageMap[currRegion]
+			// draw relative pixel in best image in final image
+			relativeX := x - currRegion.X*region.Dx()
+			relativeY := y - currRegion.Y*region.Dy()
+			mosaic.Set(x, y, bestImage.At(relativeX, relativeY))
+		}
+	}
+	ret <- mosaic
+}
