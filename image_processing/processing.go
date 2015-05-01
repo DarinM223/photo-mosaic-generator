@@ -13,11 +13,6 @@ const (
 	WEIGHT_VALUE      = 0.1
 )
 
-type colorChanType struct {
-	Color color.Color
-	Image image.Image
-}
-
 func convertRGBToHSV(c color.Color) pkgColor.HSV {
 	r, g, b, _ := c.RGBA()
 	h, s, v := pkgColor.RGBToHSV(uint8(r), uint8(g), uint8(b))
@@ -55,43 +50,67 @@ func FindClosestColor(c color.Color, imageMap map[color.Color]image.Image) color
 // Gets the best image for the color
 // if image is not in the color map, then create a new goroutine to calculate the closest image
 // and sent it through a return channel
-func GetBestImage(c color.Color, imageMap map[color.Color]image.Image,
-	savedBestColorMap map[color.Color]color.Color) image.Image {
-
+func GetBestImage(c color.Color, imageMap map[color.Color]image.Image) image.Image {
 	if imageMap[c] != nil { // if there is an exact color match
 		return imageMap[c]
-	} else if savedBestColorMap[c] != nil { // if the closest color has already been calculated
-		return imageMap[savedBestColorMap[c]]
 	} else {
 		closestColor := FindClosestColor(c, imageMap)
-		savedBestColorMap[c] = closestColor // save best color mapping
 		return imageMap[closestColor]
 	}
 }
 
 // Calculates the average color of an image and sends the result through a channel
 func CalculateAverageColor(img image.Image, ret chan colorChanType) {
-	r_count, b_count, g_count := uint32(0), uint32(0), uint32(0)
-	total_count := uint32(0)
+	var averageCalc averageColorCalcType = &averageColorCalcStruct{
+		0,
+		0,
+		0,
+		0,
+	}
 
 	for y := 0; y < img.Bounds().Dy(); y++ {
 		for x := 0; x < img.Bounds().Dx(); x++ {
-			r, b, g, _ := img.At(x, y).RGBA()
-
-			r_count += r
-			b_count += b
-			g_count += g
-			total_count++
+			averageCalc.Increment(img.At(x, y))
 		}
 	}
 
 	ret <- colorChanType{
-		color.RGBA{
-			uint8(r_count / total_count),
-			uint8(b_count / total_count),
-			uint8(g_count / total_count),
-			1,
-		},
+		averageCalc.CalcAverage(),
 		img,
 	}
+}
+
+// Breaks the image into multiple regions and returns through a channel a map of region index to the calculated
+// average color of each region. The region index is specified by a point starting from (0, 0)
+// to (number of x regions - 1, number of y regions - 1)
+func CalculateAverageColorRegions(img image.Image, region image.Rectangle, ret chan map[image.Point]color.Color) {
+	regionMap := make(map[image.Point]averageColorCalcType)
+	averageColorMap := make(map[image.Point]color.Color)
+
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			currRegionX := int(float64(x) / float64(region.Dx()))
+			currRegionY := int(float64(y) / float64(region.Dy()))
+
+			currRegion := image.Point{
+				currRegionX,
+				currRegionY,
+			}
+			if regionMap[currRegion] == nil {
+				regionMap[currRegion] = &averageColorCalcStruct{
+					0,
+					0,
+					0,
+					0,
+				}
+			} else {
+				regionMap[currRegion].Increment(img.At(x, y))
+			}
+		}
+	}
+
+	for r, calc := range regionMap {
+		averageColorMap[r] = calc.CalcAverage()
+	}
+	ret <- averageColorMap
 }

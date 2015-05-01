@@ -2,6 +2,7 @@ package image_processing
 
 import (
 	"fmt"
+	"github.com/nfnt/resize"
 	"image"
 	"image/color"
 	_ "image/gif"
@@ -10,7 +11,8 @@ import (
 	"time"
 )
 
-func RetrieveImages(imageUrls []string, c chan image.Image) {
+// retrieves images from urls and passes it into channel, resizing the image to fit a rectangle
+func RetrieveImages(imageUrls []string, c chan image.Image, regionSize image.Rectangle) {
 	client := http.Client{
 		Timeout: 500,
 	}
@@ -19,8 +21,9 @@ func RetrieveImages(imageUrls []string, c chan image.Image) {
 		defer resp.Body.Close()
 
 		img, _, err := image.Decode(resp.Body)
+		resizedImg := resize.Resize(uint(regionSize.Dx()), uint(regionSize.Dy()), img, resize.NearestNeighbor)
 		if err == nil {
-			c <- img
+			c <- resizedImg
 		}
 	}
 }
