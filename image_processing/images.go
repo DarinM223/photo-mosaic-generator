@@ -37,7 +37,7 @@ func ProcessImages(imagesLength int, imageChan chan image.Image, ret chan map[co
 
 	// timeout after a second
 	go func() {
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 		timeout <- true
 	}()
 
